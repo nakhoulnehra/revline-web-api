@@ -88,6 +88,24 @@ class LoginTest extends TestCase
         $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 
+    public function test_spa_login_requires_a_valid_csrf_token(): void
+    {
+        $this->app['env'] = 'local';
+
+        User::factory()->create([
+            'email' => 'nakhoul@example.com',
+            'password' => 'StrongPassword123!',
+        ]);
+
+        $this->postLogin([
+            'email' => 'nakhoul@example.com',
+            'password' => 'StrongPassword123!',
+        ])->assertStatus(419);
+
+        $this->assertGuest('web');
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
     public function test_repeated_failed_logins_are_rate_limited_by_normalized_email_and_ip(): void
     {
         User::factory()->create([
@@ -171,6 +189,8 @@ class LoginTest extends TestCase
         $originalSessionId = DB::table('sessions')->sole()->id;
         $sessionCookie = $csrfResponse->getCookie(config('session.cookie'))->getValue();
         $csrfToken = urldecode($csrfResponse->getCookie('XSRF-TOKEN', false)->getValue());
+
+        $this->app['env'] = 'local';
 
         $response = $this
             ->withCookie(config('session.cookie'), $sessionCookie)
