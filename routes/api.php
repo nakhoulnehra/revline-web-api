@@ -11,6 +11,7 @@ Route::post('/register', RegisteredUserController::class)
     ->name('register');
 
 Route::post('/login', AuthenticatedSessionController::class)
+    ->middleware('throttle:login')
     ->name('login');
 
 Route::middleware('auth:sanctum')->group(function () {

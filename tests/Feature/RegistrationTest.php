@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
@@ -31,6 +32,41 @@ class RegistrationTest extends TestCase
         $this->assertNull($user->email_verified_at);
         $this->assertGuest();
         $this->assertDatabaseCount('sessions', 0);
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+    }
+
+    public function test_spa_registration_logs_the_new_user_in_with_a_fresh_session(): void
+    {
+        config()->set('session.driver', 'database');
+        $this->app['session']->forgetDrivers();
+
+        $csrfResponse = $this
+            ->withHeaders($this->spaHeaders())
+            ->get('/sanctum/csrf-cookie');
+
+        $guestSessionId = DB::table('sessions')->sole()->id;
+        $sessionCookie = $csrfResponse->getCookie(config('session.cookie'))->getValue();
+        $csrfToken = urldecode($csrfResponse->getCookie('XSRF-TOKEN', false)->getValue());
+
+        $response = $this
+            ->withCookie(config('session.cookie'), $sessionCookie)
+            ->withUnencryptedCookie('XSRF-TOKEN', $csrfToken)
+            ->withHeader('X-XSRF-TOKEN', $csrfToken)
+            ->withCredentials()
+            ->withHeaders($this->spaHeaders())
+            ->postJson('/api/register', $this->validPayload());
+
+        $response
+            ->assertCreated()
+            ->assertJsonPath('data.email', 'nakhoul@example.com');
+
+        $user = User::sole();
+        $authenticatedSessionId = $response->getCookie(config('session.cookie'))->getValue();
+
+        $this->assertAuthenticatedAs($user, 'web');
+        $this->assertNotSame($guestSessionId, $authenticatedSessionId);
+        $this->assertDatabaseMissing('sessions', ['id' => $guestSessionId]);
+        $this->assertDatabaseHas('sessions', ['user_id' => $user->id]);
         $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 
@@ -98,6 +134,14 @@ class RegistrationTest extends TestCase
 
         $this->assertDatabaseCount('users', 5);
         $this->assertDatabaseMissing('users', ['email' => 'user6@example.com']);
+    }
+
+    private function spaHeaders(): array
+    {
+        return [
+            'Origin' => 'http://localhost:5173',
+            'Referer' => 'http://localhost:5173/',
+        ];
     }
 
     private function validPayload(array $overrides = []): array

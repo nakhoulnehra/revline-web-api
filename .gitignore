@@ -1,6 +1,9 @@
 *.log
 .DS_Store
 .env
+CLAUDE.md
+AGENTS.md
+.claude/
 .env.backup
 .env.production
 .env.staging
